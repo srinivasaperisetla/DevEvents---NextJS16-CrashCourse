@@ -38,7 +38,7 @@ async function connectToDatabase(): Promise<Connection> {
   if (cached.conn) {
     return cached.conn;
   }
-.0
+
   // Reuse the in-flight promise if a connection attempt is already underway
   if (!cached.promise) {
     cached.promise = mongoose
@@ -49,7 +49,14 @@ async function connectToDatabase(): Promise<Connection> {
       .then((m) => m.connection);
   }
 
-  cached.conn = await cached.promise;
+  try {
+    cached.conn = await cached.promise;
+  } catch (err) {
+    // Clear the rejected promise so the next call can retry
+    cached.promise = null;
+    throw err;
+  }
+
   return cached.conn;
 }
 

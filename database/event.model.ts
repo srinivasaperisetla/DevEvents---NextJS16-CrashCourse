@@ -36,9 +36,25 @@ const EventSchema = new Schema<IEvent>(
       enum: ["online", "offline", "hybrid"],
     },
     audience: { type: String, required: true, trim: true },
-    agenda: { type: [String], required: true, validate: (v: string[]) => v.length > 0 },
+    agenda: {
+      type: [String],
+      required: true,
+      validate: {
+        validator: (v: string[]) =>
+          Array.isArray(v) && v.length > 0 && v.every((item) => typeof item === "string" && item.trim().length > 0),
+        message: "agenda must contain at least one non-blank string",
+      },
+    },
     organizer: { type: String, required: true, trim: true },
-    tags: { type: [String], required: true, validate: (v: string[]) => v.length > 0 },
+    tags: {
+      type: [String],
+      required: true,
+      validate: {
+        validator: (v: string[]) =>
+          Array.isArray(v) && v.length > 0 && v.every((item) => typeof item === "string" && item.trim().length > 0),
+        message: "tags must contain at least one non-blank string",
+      },
+    },
   },
   { timestamps: true }
 );
@@ -53,15 +69,17 @@ EventSchema.pre("save", function (next) {
       .replace(/[^\w\s-]/g, "")
       .replace(/[\s_]+/g, "-")
       .replace(/^-+|-+$/g, "");
+
+    if (!this.slug) {
+      return next(new Error("Title cannot produce a valid slug — it must contain at least one alphanumeric character"));
+    }
   }
 
-  // Normalize date to ISO 8601 (YYYY-MM-DD)
+  // Validate date is strict YYYY-MM-DD without re-parsing (avoids timezone-driven day shifts)
   if (this.isModified("date")) {
-    const parsed = new Date(this.date);
-    if (isNaN(parsed.getTime())) {
-      return next(new Error(`Invalid date value: "${this.date}"`));
+    if (!/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(this.date)) {
+      return next(new Error(`Invalid date format: "${this.date}" — expected YYYY-MM-DD`));
     }
-    this.date = parsed.toISOString().split("T")[0];
   }
 
   // Normalize time to HH:MM 24-hour format
@@ -74,13 +92,19 @@ EventSchema.pre("save", function (next) {
     }
 
     let hours = parseInt(timeMatch[1], 10);
-    const minutes = timeMatch[2];
+    const mins = parseInt(timeMatch[2], 10);
     const period = timeMatch[3]?.toUpperCase();
+
+    if (mins < 0 || mins > 59 ||
+        (period && (hours < 1 || hours > 12)) ||
+        (!period && (hours < 0 || hours > 23))) {
+      return next(new Error(`Invalid time format or out-of-range time: "${this.time}"`));
+    }
 
     if (period === "PM" && hours !== 12) hours += 12;
     if (period === "AM" && hours === 12) hours = 0;
 
-    this.time = `${String(hours).padStart(2, "0")}:${minutes}`;
+    this.time = `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
   }
 
   // Guard against empty-string required fields that bypass Mongoose's `required`
