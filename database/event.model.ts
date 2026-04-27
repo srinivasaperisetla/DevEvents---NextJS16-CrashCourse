@@ -75,10 +75,17 @@ EventSchema.pre("save", function (next) {
     }
   }
 
-  // Validate date is strict YYYY-MM-DD without re-parsing (avoids timezone-driven day shifts)
+  // Validate date is strict YYYY-MM-DD and a real calendar date (via UTC round-trip)
   if (this.isModified("date")) {
-    if (!/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(this.date)) {
+    const dateMatch = this.date.match(/^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/);
+    if (!dateMatch) {
       return next(new Error(`Invalid date format: "${this.date}" — expected YYYY-MM-DD`));
+    }
+
+    const [year, month, day] = [parseInt(dateMatch[1], 10), parseInt(dateMatch[2], 10), parseInt(dateMatch[3], 10)];
+    const utc = new Date(Date.UTC(year, month - 1, day));
+    if (utc.getUTCFullYear() !== year || utc.getUTCMonth() + 1 !== month || utc.getUTCDate() !== day) {
+      return next(new Error(`Invalid calendar date: "${this.date}" does not exist`));
     }
   }
 

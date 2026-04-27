@@ -43,7 +43,7 @@ async function connectToDatabase(): Promise<Connection> {
   if (!cached.promise) {
     cached.promise = mongoose
       .connect(MONGODB_URI!, {
-        dbName: "next-js-crash-course",
+        ...(process.env.MONGODB_DBNAME && { dbName: process.env.MONGODB_DBNAME }),
         bufferCommands: false,
       })
       .then((m) => m.connection);
