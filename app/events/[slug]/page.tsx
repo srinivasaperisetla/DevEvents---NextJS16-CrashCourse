@@ -5,6 +5,7 @@ import BookEvent from '@/components/BookEvent';
 import { getSimilarEventsBySlug } from '@/lib/actions/event.actions';
 import { IEvent } from '@/database';
 import EventCard from '@/components/EventCard';
+import { cacheLife } from 'next/cache';
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL;
 
@@ -37,9 +38,35 @@ const EventTags = ({ tags } : { tags: string[] }) => (
 )
 
 const EventDetailsPage = async ({ params }: { params: Promise<{ slug: string }>}) => {
+	'use cache'
+	cacheLife('hours');
 	const { slug } = await params;
-	const request = await fetch(`${BASE_URL}/api/events/${slug}`);
-	const { event: {description, image, overview, date, time, location, mode, agenda, audience, tags, organizer} } = await request.json();
+
+	let event;
+    try {
+        const request = await fetch(`${BASE_URL}/api/events/${slug}`, {
+            next: { revalidate: 60 }
+        });
+
+        if (!request.ok) {
+            if (request.status === 404) {
+                return notFound();
+            }
+            throw new Error(`Failed to fetch event: ${request.statusText}`);
+        }
+
+        const response = await request.json();
+        event = response.event;
+
+        if (!event) {
+            return notFound();
+        }
+    } catch (error) {
+        console.error('Error fetching event:', error);
+        return notFound();
+    }
+
+    const { description, image, overview, date, time, location, mode, agenda, audience, tags, organizer } = event;
 
 	if(!description) return notFound();
 
@@ -96,7 +123,7 @@ const EventDetailsPage = async ({ params }: { params: Promise<{ slug: string }>}
 							<p className='text-sm'>Be the first to book your spot!</p>
 						)}
 
-						<BookEvent />
+						<BookEvent eventId={event._id} slug={slug} />
 					</div>
 				</aside>
 
